@@ -6,74 +6,90 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import StockChart from '@/components/StockChart';
 import StockCard from '@/components/StockCard';
-import { Search, TrendingUp, TrendingDown, Brain, Target } from 'lucide-react';
-import { generateCurrentStockPrice, generateStockData, generatePrediction, POPULAR_STOCKS } from '@/utils/stockUtils';
+import { Search, TrendingUp, TrendingDown, Brain, Target, Zap } from 'lucide-react';
+import { useStockData } from '@/hooks/useStockData';
+import { useStockPrediction } from '@/hooks/useStockPrediction';
 import { toast } from 'sonner';
 
 const Predict = () => {
   const [searchSymbol, setSearchSymbol] = useState('AAPL');
   const [currentStock, setCurrentStock] = useState<any>(null);
-  const [historicalData, setHistoricalData] = useState<any[]>([]);
-  const [predictions, setPredictions] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [combinedChartData, setCombinedChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [prediction, setPrediction] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const handleSearch = async () => {
+  const { fetchStockPrice, fetchStockChart, loading: stockLoading } = useStockData();
+  const { generatePrediction, getCachedPrediction, loading: predictionLoading } = useStockPrediction();
+
+  const handleAnalyze = async () => {
     if (!searchSymbol.trim()) {
       toast.error('Please enter a stock symbol');
       return;
     }
 
-    setIsLoading(true);
+    setIsAnalyzing(true);
     
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // First check for cached prediction
+      const cached = await getCachedPrediction(searchSymbol.toUpperCase());
       
-      const stock = generateCurrentStockPrice(searchSymbol.toUpperCase());
-      const historical = generateStockData(searchSymbol.toUpperCase(), 30);
-      const predicted = generatePrediction(historical, 5);
+      // Fetch current stock data
+      const stockData = await fetchStockPrice(searchSymbol.toUpperCase());
+      const chartHistory = await fetchStockChart(searchSymbol.toUpperCase());
       
-      setCurrentStock(stock);
-      setHistoricalData(historical);
-      setPredictions(predicted);
-      
-      // Combine historical and prediction data for chart
-      const combined = [
-        ...historical,
-        ...predicted.map(p => ({
-          ...p,
-          price: historical[historical.length - 1]?.price || 0, // Keep last actual price
-        }))
-      ];
-      setCombinedChartData(combined);
-      
-      toast.success(`Analysis complete for ${searchSymbol.toUpperCase()}`);
+      if (stockData) {
+        setCurrentStock(stockData);
+        
+        // Transform chart data for display
+        const transformedChart = chartHistory.map(point => ({
+          time: new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          price: point.price,
+          volume: point.volume,
+        }));
+        setChartData(transformedChart);
+        
+        // Generate or use cached prediction
+        let predictionResult = cached;
+        if (!cached) {
+          const historicalPrices = chartHistory.map(point => point.price);
+          predictionResult = await generatePrediction(
+            searchSymbol.toUpperCase(),
+            stockData.price,
+            historicalPrices
+          );
+        }
+        
+        setPrediction(predictionResult);
+        toast.success(`Analysis complete for ${searchSymbol.toUpperCase()}`);
+      } else {
+        toast.error('Failed to fetch stock data');
+      }
     } catch (error) {
-      toast.error('Failed to fetch stock data');
+      toast.error('Analysis failed. Please try again.');
+      console.error('Analysis error:', error);
     } finally {
-      setIsLoading(false);
+      setIsAnalyzing(false);
     }
   };
 
   useEffect(() => {
-    handleSearch();
+    handleAnalyze();
   }, []);
 
   const quickSymbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META'];
+  const isLoading = stockLoading || predictionLoading || isAnalyzing;
   
-  const nextDayPrediction = predictions[0]?.prediction;
-  const predictionChange = nextDayPrediction && currentStock ? 
-    ((nextDayPrediction - currentStock.price) / currentStock.price) * 100 : 0;
+  const predictionChange = prediction && currentStock ? 
+    ((prediction.predictedPrice - currentStock.price) / currentStock.price) * 100 : 0;
   const isPredictionPositive = predictionChange >= 0;
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
       {/* Header */}
       <div className="text-center space-y-4">
-        <h1 className="text-3xl md:text-4xl font-bold">Stock Price Prediction</h1>
+        <h1 className="text-3xl md:text-4xl font-bold">AI Stock Prediction</h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Enter a stock symbol to get AI-powered price predictions based on historical data and market trends.
+          Get real-time stock data and AI-powered price predictions using advanced machine learning algorithms.
         </p>
       </div>
 
@@ -82,7 +98,7 @@ const Predict = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
-            Search Stock
+            Analyze Stock
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -91,11 +107,21 @@ const Predict = () => {
               placeholder="Enter stock symbol (e.g., AAPL)"
               value={searchSymbol}
               onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyPress={(e) => e.key === 'Enter' && handleAnalyze()}
               className="uppercase"
             />
-            <Button onClick={handleSearch} disabled={isLoading}>
-              {isLoading ? 'Analyzing...' : 'Predict'}
+            <Button onClick={handleAnalyze} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Brain className="mr-2 h-4 w-4 animate-pulse" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  Analyze
+                </>
+              )}
             </Button>
           </div>
           
@@ -109,7 +135,7 @@ const Predict = () => {
                 size="sm"
                 onClick={() => {
                   setSearchSymbol(symbol);
-                  setTimeout(handleSearch, 100);
+                  setTimeout(handleAnalyze, 100);
                 }}
                 className="text-xs"
               >
@@ -120,7 +146,7 @@ const Predict = () => {
         </CardContent>
       </Card>
 
-      {/* Current Stock Info */}
+      {/* Results */}
       {currentStock && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1">
@@ -133,16 +159,16 @@ const Predict = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Brain className="h-5 w-5 text-primary" />
-                  AI Prediction Summary
+                  AI Prediction Analysis
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {nextDayPrediction ? (
+                {prediction ? (
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center p-4 bg-accent/20 rounded-lg">
-                        <div className="text-sm text-muted-foreground">Next Day Prediction</div>
-                        <div className="text-2xl font-bold">${nextDayPrediction.toFixed(2)}</div>
+                        <div className="text-sm text-muted-foreground">Predicted Price</div>
+                        <div className="text-2xl font-bold">${prediction.predictedPrice.toFixed(2)}</div>
                         <Badge variant={isPredictionPositive ? "default" : "destructive"} className="mt-2">
                           {isPredictionPositive ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
                           {isPredictionPositive ? '+' : ''}{predictionChange.toFixed(2)}%
@@ -151,25 +177,27 @@ const Predict = () => {
                       
                       <div className="text-center p-4 bg-accent/20 rounded-lg">
                         <div className="text-sm text-muted-foreground">Confidence Level</div>
-                        <div className="text-2xl font-bold">87%</div>
+                        <div className="text-2xl font-bold">{prediction.confidence}%</div>
                         <Badge variant="outline" className="mt-2">
                           <Target className="h-3 w-3 mr-1" />
-                          High Confidence
+                          {prediction.confidence >= 80 ? 'High' : prediction.confidence >= 60 ? 'Medium' : 'Low'} Confidence
                         </Badge>
                       </div>
                     </div>
                     
                     <div className="text-sm text-muted-foreground">
                       <p>
-                        <strong>Analysis:</strong> Based on the last 30 days of price movement and technical indicators, 
-                        our AI model predicts a {isPredictionPositive ? 'bullish' : 'bearish'} trend for {currentStock.symbol}. 
-                        The prediction takes into account historical volatility, moving averages, and market sentiment.
+                        <strong>Analysis:</strong> Our AI model analyzed historical price movements, volatility patterns, 
+                        and technical indicators to predict a {isPredictionPositive ? 'bullish' : 'bearish'} trend for {currentStock.symbol}. 
+                        The prediction uses advanced machine learning algorithms including moving averages, momentum indicators, 
+                        and trend analysis.
                       </p>
                     </div>
                   </>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
-                    Search for a stock to see AI predictions
+                    <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Search for a stock to see AI predictions</p>
                   </div>
                 )}
               </CardContent>
@@ -179,47 +207,29 @@ const Predict = () => {
       )}
 
       {/* Chart */}
-      {combinedChartData.length > 0 && (
+      {chartData.length > 0 && (
         <div className="animate-slide-up">
           <StockChart 
-            data={combinedChartData}
+            data={chartData}
             symbol={currentStock?.symbol || ''}
-            showPrediction={true}
+            showPrediction={false}
             type="line"
           />
         </div>
       )}
 
-      {/* Prediction Details */}
-      {predictions.length > 0 && (
-        <Card className="animate-fade-in">
-          <CardHeader>
-            <CardTitle>5-Day Prediction Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              {predictions.map((pred, index) => {
-                const dayChange = index === 0 ? predictionChange : 
-                  ((pred.prediction - predictions[index - 1].prediction) / predictions[index - 1].prediction) * 100;
-                const isDayPositive = dayChange >= 0;
-                
-                return (
-                  <div key={index} className="text-center p-4 bg-accent/10 rounded-lg">
-                    <div className="text-sm text-muted-foreground">Day {index + 1}</div>
-                    <div className="text-lg font-bold">${pred.prediction.toFixed(2)}</div>
-                    <Badge 
-                      variant={isDayPositive ? "default" : "destructive"} 
-                      className="text-xs mt-1"
-                    >
-                      {isDayPositive ? '+' : ''}{dayChange.toFixed(1)}%
-                    </Badge>
-                  </div>
-                );
-              })}
+      {/* Disclaimer */}
+      <Card className="border-amber-200 bg-amber-50/10">
+        <CardContent className="pt-6">
+          <div className="flex items-start space-x-2">
+            <div className="w-2 h-2 bg-amber-500 rounded-full mt-2 flex-shrink-0"></div>
+            <div className="text-sm text-muted-foreground">
+              <strong>Disclaimer:</strong> Stock predictions are for educational purposes only and should not be considered as financial advice. 
+              Past performance does not guarantee future results. Always consult with a qualified financial advisor before making investment decisions.
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

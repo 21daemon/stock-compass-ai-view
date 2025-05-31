@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { TrendingUp, Home, BarChart3, GitCompare, Lightbulb, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import UserMenu from './UserMenu';
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,6 +54,11 @@ const Navigation = () => {
             })}
           </div>
 
+          {/* Desktop User Menu */}
+          <div className="hidden md:flex items-center space-x-4">
+            <UserMenu />
+          </div>
+
           {/* Mobile menu button */}
           <Button
             variant="ghost"
@@ -88,6 +94,9 @@ const Navigation = () => {
                   </Link>
                 );
               })}
+              <div className="pt-4 border-t border-border/40">
+                <UserMenu />
+              </div>
             </div>
           </div>
         )}
