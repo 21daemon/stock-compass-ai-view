@@ -23,15 +23,15 @@ export const useStockPrediction = () => {
       setLoading(true);
       setError(null);
 
-      // Simple prediction algorithm using moving averages and trend analysis
-      const prediction = calculateAdvancedPrediction(currentPrice, historicalData);
+      // Call Gemini AI for prediction
+      const aiPrediction = await callGeminiForPrediction(symbol, currentPrice, historicalData);
       
       const predictionData = {
         symbol: symbol.toUpperCase(),
-        currentPrice,
-        predictedPrice: prediction.price,
-        confidence: prediction.confidence,
-        predictionDate: new Date().toISOString().split('T')[0],
+        current_price: currentPrice,
+        predicted_price: aiPrediction.price,
+        confidence: aiPrediction.confidence,
+        prediction_date: new Date().toISOString().split('T')[0],
       };
 
       // Cache prediction in database
@@ -46,8 +46,11 @@ export const useStockPrediction = () => {
       }
 
       return {
-        ...predictionData,
-        predictionDate: predictionData.predictionDate,
+        symbol: predictionData.symbol,
+        currentPrice: predictionData.current_price,
+        predictedPrice: predictionData.predicted_price,
+        confidence: predictionData.confidence,
+        predictionDate: predictionData.prediction_date,
       };
     } catch (err) {
       console.error('Prediction error:', err);
@@ -96,56 +99,65 @@ export const useStockPrediction = () => {
   };
 };
 
+async function callGeminiForPrediction(symbol: string, currentPrice: number, historicalData: number[]) {
+  try {
+    const response = await supabase.functions.invoke('gemini-stock-prediction', {
+      body: {
+        symbol,
+        currentPrice,
+        historicalData
+      }
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error('Gemini API call failed, using fallback algorithm:', error);
+    return calculateAdvancedPrediction(currentPrice, historicalData);
+  }
+}
+
 function calculateAdvancedPrediction(currentPrice: number, historicalData: number[]) {
   if (historicalData.length < 5) {
-    // Not enough data, return conservative prediction
     return {
-      price: currentPrice * (1 + (Math.random() - 0.5) * 0.02), // ±1%
+      price: currentPrice * (1 + (Math.random() - 0.5) * 0.02),
       confidence: 65,
     };
   }
 
-  // Calculate moving averages
   const short_ma = calculateMovingAverage(historicalData.slice(-5), 5);
   const long_ma = calculateMovingAverage(historicalData.slice(-10), 10);
   
-  // Calculate volatility
   const returns = historicalData.slice(1).map((price, i) => 
     Math.log(price / historicalData[i])
   );
   const volatility = calculateStandardDeviation(returns);
   
-  // Calculate trend
   const trend = calculateLinearTrend(historicalData.slice(-10));
   
-  // Simple momentum indicator
   const momentum = (currentPrice - historicalData[Math.max(0, historicalData.length - 5)]) / 
                    historicalData[Math.max(0, historicalData.length - 5)];
   
-  // Combine indicators for prediction
   let predictionFactor = 0;
   let confidence = 70;
   
-  // Moving average crossover
   if (short_ma > long_ma) {
-    predictionFactor += 0.01; // Bullish signal
+    predictionFactor += 0.01;
     confidence += 5;
   } else {
-    predictionFactor -= 0.01; // Bearish signal
+    predictionFactor -= 0.01;
     confidence += 5;
   }
   
-  // Trend following
   predictionFactor += trend * 0.5;
-  
-  // Momentum
   predictionFactor += momentum * 0.3;
   
-  // Volatility adjustment
-  const maxChange = Math.min(0.05, volatility * 2); // Cap at 5% change
+  const maxChange = Math.min(0.05, volatility * 2);
   predictionFactor = Math.max(-maxChange, Math.min(maxChange, predictionFactor));
   
-  // Adjust confidence based on volatility (higher volatility = lower confidence)
   confidence = Math.max(50, Math.min(95, confidence - (volatility * 100)));
   
   return {
@@ -177,5 +189,5 @@ function calculateLinearTrend(data: number[]): number {
   const sumXX = x.reduce((acc, xi) => acc + xi * xi, 0);
   
   const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  return slope / (sumY / n); // Normalize by average price
+  return slope / (sumY / n);
 }

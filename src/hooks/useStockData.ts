@@ -1,6 +1,4 @@
-
-import { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
+import { useState, useCallback } from 'react';
 
 interface StockPrice {
   symbol: string;
@@ -19,27 +17,18 @@ interface StockChart {
   volume: number;
 }
 
-// Alpha Vantage API (Free tier: 5 calls per minute, 500 calls per day)
-const ALPHA_VANTAGE_API_KEY = 'demo'; // Replace with actual key
-const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
-
-// Finnhub API (Free tier: 60 calls per minute)
-const FINNHUB_API_KEY = 'demo'; // Replace with actual key
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-
 export const useStockData = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch real-time stock price using Alpha Vantage
   const fetchStockPrice = useCallback(async (symbol: string): Promise<StockPrice | null> => {
     try {
       setLoading(true);
       setError(null);
 
-      // Try Alpha Vantage first
+      // Try Financial Modeling Prep API first (free tier)
       const response = await fetch(
-        `${ALPHA_VANTAGE_BASE_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`
+        `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=demo`
       );
       
       if (!response.ok) {
@@ -47,47 +36,38 @@ export const useStockData = () => {
       }
 
       const data = await response.json();
+      const quote = data[0];
       
-      if (data['Error Message'] || data['Note']) {
-        // If API limit reached, fall back to simulated data
-        console.warn('API limit reached, using simulated data');
+      if (!quote) {
         return generateSimulatedStockPrice(symbol);
       }
 
-      const quote = data['Global Quote'];
-      if (!quote) {
-        throw new Error('Invalid stock symbol');
-      }
-
       return {
-        symbol: quote['01. symbol'],
-        price: parseFloat(quote['05. price']),
-        change: parseFloat(quote['09. change']),
-        changePercent: parseFloat(quote['10. change percent'].replace('%', '')),
-        high: parseFloat(quote['03. high']),
-        low: parseFloat(quote['04. low']),
-        volume: parseInt(quote['06. volume']),
+        symbol: quote.symbol,
+        price: quote.price,
+        change: quote.change,
+        changePercent: quote.changesPercentage,
+        high: quote.dayHigh,
+        low: quote.dayLow,
+        volume: quote.volume,
+        marketCap: quote.marketCap,
       };
     } catch (err) {
       console.error('Stock price fetch error:', err);
-      // Fall back to simulated data
       return generateSimulatedStockPrice(symbol);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Fetch historical chart data
-  const fetchStockChart = useCallback(async (symbol: string, interval: '1min' | '5min' | '15min' | '30min' | '60min' | 'daily' = 'daily'): Promise<StockChart[]> => {
+  const fetchStockChart = useCallback(async (symbol: string): Promise<StockChart[]> => {
     try {
       setLoading(true);
       setError(null);
 
-      const functionName = interval === 'daily' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
-      const intervalParam = interval === 'daily' ? '' : `&interval=${interval}`;
-      
+      // Get historical data from Financial Modeling Prep
       const response = await fetch(
-        `${ALPHA_VANTAGE_BASE_URL}?function=${functionName}&symbol=${symbol}${intervalParam}&apikey=${ALPHA_VANTAGE_API_KEY}`
+        `https://financialmodelingprep.com/api/v3/historical-price-full/${symbol}?timeseries=30&apikey=demo`
       );
 
       if (!response.ok) {
@@ -96,24 +76,16 @@ export const useStockData = () => {
 
       const data = await response.json();
       
-      if (data['Error Message'] || data['Note']) {
-        // Fall back to simulated data
+      if (!data.historical || data.historical.length === 0) {
         return generateSimulatedChartData(symbol);
       }
 
-      const timeSeriesKey = interval === 'daily' ? 'Time Series (Daily)' : `Time Series (${interval})`;
-      const timeSeries = data[timeSeriesKey];
-      
-      if (!timeSeries) {
-        return generateSimulatedChartData(symbol);
-      }
-
-      const chartData: StockChart[] = Object.entries(timeSeries)
-        .slice(0, 30) // Last 30 data points
-        .map(([timestamp, values]: [string, any]) => ({
-          timestamp: new Date(timestamp).getTime(),
-          price: parseFloat(values['4. close']),
-          volume: parseInt(values['5. volume']),
+      const chartData: StockChart[] = data.historical
+        .slice(0, 30)
+        .map((item: any) => ({
+          timestamp: new Date(item.date).getTime(),
+          price: item.close,
+          volume: item.volume,
         }))
         .reverse();
 
@@ -126,7 +98,6 @@ export const useStockData = () => {
     }
   }, []);
 
-  // Fetch multiple stocks for market overview
   const fetchMarketOverview = useCallback(async (symbols: string[]): Promise<StockPrice[]> => {
     try {
       setLoading(true);
@@ -158,10 +129,10 @@ export const useStockData = () => {
   };
 };
 
-// Fallback simulated data when API limits are reached
+// ... keep existing code (fallback functions remain the same)
 function generateSimulatedStockPrice(symbol: string): StockPrice {
   const basePrice = getBasePriceForSymbol(symbol);
-  const changePercent = (Math.random() - 0.5) * 8; // -4% to +4%
+  const changePercent = (Math.random() - 0.5) * 8;
   const change = basePrice * (changePercent / 100);
   const price = basePrice + change;
   
@@ -182,8 +153,8 @@ function generateSimulatedChartData(symbol: string): StockChart[] {
   let currentPrice = basePrice;
   
   for (let i = 29; i >= 0; i--) {
-    const timestamp = Date.now() - (i * 24 * 60 * 60 * 1000); // Last 30 days
-    const volatility = 0.02; // 2% daily volatility
+    const timestamp = Date.now() - (i * 24 * 60 * 60 * 1000);
+    const volatility = 0.02;
     const randomChange = (Math.random() - 0.5) * 2 * volatility;
     currentPrice = currentPrice * (1 + randomChange);
     
