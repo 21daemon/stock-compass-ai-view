@@ -26,35 +26,42 @@ export const useStockData = () => {
       setLoading(true);
       setError(null);
 
-      // Try Financial Modeling Prep API first (free tier)
+      // Use Alpha Vantage API (free tier with real data)
       const response = await fetch(
-        `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=demo`
+        `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=demo`
       );
       
       if (!response.ok) {
-        throw new Error('Failed to fetch stock data');
+        setError(`Stock ${symbol} not found`);
+        return null;
       }
 
       const data = await response.json();
-      const quote = data[0];
+      const quote = data['Global Quote'];
       
-      if (!quote) {
-        return generateSimulatedStockPrice(symbol);
+      if (!quote || Object.keys(quote).length === 0) {
+        setError(`Stock ${symbol} not found`);
+        return null;
       }
 
+      const price = parseFloat(quote['05. price']);
+      const change = parseFloat(quote['09. change']);
+      const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
+
       return {
-        symbol: quote.symbol,
-        price: quote.price,
-        change: quote.change,
-        changePercent: quote.changesPercentage,
-        high: quote.dayHigh,
-        low: quote.dayLow,
-        volume: quote.volume,
-        marketCap: quote.marketCap,
+        symbol: quote['01. symbol'],
+        price: price,
+        change: change,
+        changePercent: changePercent,
+        high: parseFloat(quote['03. high']),
+        low: parseFloat(quote['04. low']),
+        volume: parseInt(quote['06. volume']),
+        marketCap: Math.round(price * parseInt(quote['06. volume']) / 1000000), // Estimated
       };
     } catch (err) {
       console.error('Stock price fetch error:', err);
-      return generateSimulatedStockPrice(symbol);
+      setError(`Failed to fetch data for ${symbol}`);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -65,34 +72,38 @@ export const useStockData = () => {
       setLoading(true);
       setError(null);
 
-      // Get historical data from Financial Modeling Prep
+      // Get historical data from Alpha Vantage
       const response = await fetch(
-        `https://financialmodelingprep.com/api/v3/historical-price-full/${symbol}?timeseries=30&apikey=demo`
+        `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=demo&outputsize=compact`
       );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch chart data');
+        setError(`Chart data for ${symbol} not found`);
+        return [];
       }
 
       const data = await response.json();
+      const timeSeries = data['Time Series (Daily)'];
       
-      if (!data.historical || data.historical.length === 0) {
-        return generateSimulatedChartData(symbol);
+      if (!timeSeries || Object.keys(timeSeries).length === 0) {
+        setError(`Chart data for ${symbol} not found`);
+        return [];
       }
 
-      const chartData: StockChart[] = data.historical
+      const chartData: StockChart[] = Object.entries(timeSeries)
         .slice(0, 30)
-        .map((item: any) => ({
-          timestamp: new Date(item.date).getTime(),
-          price: item.close,
-          volume: item.volume,
+        .map(([date, values]: [string, any]) => ({
+          timestamp: new Date(date).getTime(),
+          price: parseFloat(values['4. close']),
+          volume: parseInt(values['5. volume']),
         }))
         .reverse();
 
       return chartData;
     } catch (err) {
       console.error('Chart data fetch error:', err);
-      return generateSimulatedChartData(symbol);
+      setError(`Failed to fetch chart data for ${symbol}`);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -129,58 +140,3 @@ export const useStockData = () => {
   };
 };
 
-// ... keep existing code (fallback functions remain the same)
-function generateSimulatedStockPrice(symbol: string): StockPrice {
-  const basePrice = getBasePriceForSymbol(symbol);
-  const changePercent = (Math.random() - 0.5) * 8;
-  const change = basePrice * (changePercent / 100);
-  const price = basePrice + change;
-  
-  return {
-    symbol,
-    price: Math.round(price * 100) / 100,
-    change: Math.round(change * 100) / 100,
-    changePercent: Math.round(changePercent * 100) / 100,
-    high: Math.round((price * 1.02) * 100) / 100,
-    low: Math.round((price * 0.98) * 100) / 100,
-    volume: Math.floor(Math.random() * 10000000) + 1000000,
-  };
-}
-
-function generateSimulatedChartData(symbol: string): StockChart[] {
-  const basePrice = getBasePriceForSymbol(symbol);
-  const data: StockChart[] = [];
-  let currentPrice = basePrice;
-  
-  for (let i = 29; i >= 0; i--) {
-    const timestamp = Date.now() - (i * 24 * 60 * 60 * 1000);
-    const volatility = 0.02;
-    const randomChange = (Math.random() - 0.5) * 2 * volatility;
-    currentPrice = currentPrice * (1 + randomChange);
-    
-    data.push({
-      timestamp,
-      price: Math.round(currentPrice * 100) / 100,
-      volume: Math.floor(Math.random() * 5000000) + 1000000,
-    });
-  }
-  
-  return data;
-}
-
-function getBasePriceForSymbol(symbol: string): number {
-  const basePrices: { [key: string]: number } = {
-    'AAPL': 180,
-    'GOOGL': 140,
-    'MSFT': 380,
-    'AMZN': 145,
-    'TSLA': 250,
-    'META': 320,
-    'NFLX': 450,
-    'NVDA': 480,
-    'SPY': 450,
-    'QQQ': 380,
-  };
-  
-  return basePrices[symbol.toUpperCase()] || (100 + Math.random() * 200);
-}

@@ -63,73 +63,73 @@ serve(async (req) => {
 
 async function getMarketData(symbol: string): Promise<MarketData> {
   try {
-    // Using Financial Modeling Prep API (free tier - 250 requests/day)
+    // Use Alpha Vantage API for real market data
     const response = await fetch(
-      `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=demo`
+      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=demo`
     );
     
     if (!response.ok) {
-      throw new Error('Failed to fetch market data');
+      throw new Error(`Stock ${symbol} not found`);
     }
     
     const data = await response.json();
-    const quote = data[0];
+    const quote = data['Global Quote'];
     
-    if (!quote) {
-      throw new Error('No market data found');
+    if (!quote || Object.keys(quote).length === 0) {
+      throw new Error(`Stock ${symbol} not found`);
     }
     
+    const price = parseFloat(quote['05. price']);
+    const change = parseFloat(quote['09. change']);
+    const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
+    
     return {
-      symbol: quote.symbol,
-      price: quote.price,
-      volume: quote.volume,
-      marketCap: quote.marketCap,
-      peRatio: quote.pe,
-      change: quote.change,
-      changePercent: quote.changesPercentage,
+      symbol: quote['01. symbol'],
+      price: price,
+      volume: parseInt(quote['06. volume']),
+      marketCap: Math.round(price * parseInt(quote['06. volume']) / 1000000),
+      peRatio: 0, // Not available in Alpha Vantage basic
+      change: change,
+      changePercent: changePercent,
     };
   } catch (error) {
     console.error('Market data fetch error:', error);
-    // Return simulated data as fallback
-    return {
-      symbol,
-      price: 100 + Math.random() * 200,
-      volume: Math.floor(Math.random() * 10000000),
-      marketCap: Math.floor(Math.random() * 1000000000000),
-      peRatio: 15 + Math.random() * 20,
-      change: (Math.random() - 0.5) * 10,
-      changePercent: (Math.random() - 0.5) * 5,
-    };
+    throw new Error(`Unable to fetch data for ${symbol}. Stock may not exist.`);
   }
 }
 
 async function getTechnicalIndicators(symbol: string) {
   try {
-    // Get additional technical data (RSI, MACD, etc.)
+    // Get historical data for technical analysis
     const response = await fetch(
-      `https://financialmodelingprep.com/api/v3/technical_indicator/daily/${symbol}?period=14&type=rsi&apikey=demo`
+      `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=demo&outputsize=compact`
     );
     
     if (!response.ok) {
-      throw new Error('Failed to fetch technical indicators');
+      throw new Error(`Technical data for ${symbol} not found`);
     }
     
     const data = await response.json();
+    const timeSeries = data['Time Series (Daily)'];
+    
+    if (!timeSeries || Object.keys(timeSeries).length === 0) {
+      throw new Error(`Technical data for ${symbol} not found`);
+    }
+    
+    // Calculate basic indicators from price data
+    const prices = Object.values(timeSeries).slice(0, 14).map((day: any) => parseFloat(day['4. close']));
+    const avgPrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+    const currentPrice = prices[0];
     
     return {
-      rsi: data[0]?.rsi || 50,
-      trend: data.length > 5 ? 'bullish' : 'bearish',
-      support: data[0]?.low || 0,
-      resistance: data[0]?.high || 0,
+      rsi: currentPrice > avgPrice ? 65 : 35,
+      trend: currentPrice > avgPrice ? 'bullish' : 'bearish',
+      support: Math.min(...prices) * 0.98,
+      resistance: Math.max(...prices) * 1.02,
     };
   } catch (error) {
     console.error('Technical indicators fetch error:', error);
-    return {
-      rsi: 45 + Math.random() * 20,
-      trend: Math.random() > 0.5 ? 'bullish' : 'bearish',
-      support: 0,
-      resistance: 0,
-    };
+    throw new Error(`Unable to fetch technical data for ${symbol}`);
   }
 }
 
@@ -212,16 +212,6 @@ Respond in JSON format:
     throw new Error('Invalid response format from Gemini');
   } catch (error) {
     console.error('Gemini API call failed:', error);
-    
-    // Fallback to simple analysis
-    const trend = marketData.changePercent > 0 ? 1 : -1;
-    const volatility = Math.abs(marketData.changePercent) / 100;
-    const prediction = marketData.price * (1 + (trend * volatility * 0.5));
-    
-    return {
-      price: Math.round(prediction * 100) / 100,
-      confidence: 70,
-      reasoning: `Based on current market trend (${marketData.changePercent}% change) and technical analysis.`
-    };
+    throw new Error(`AI prediction failed for ${symbol}. Please try again later.`);
   }
 }

@@ -4,60 +4,109 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Lightbulb, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Brain, Zap } from 'lucide-react';
-import { generateCurrentStockPrice, POPULAR_STOCKS } from '@/utils/stockUtils';
+import { useStockData } from '@/hooks/useStockData';
+import { useToast } from '@/components/ui/use-toast';
 
 const Insights = () => {
   const [insights, setInsights] = useState<any[]>([]);
   const [marketSentiment, setMarketSentiment] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { fetchMarketOverview } = useStockData();
+  const { toast } = useToast();
 
-  const generateInsights = () => {
+  const generateInsights = async () => {
     setLoading(true);
+    setError(null);
     
-    setTimeout(() => {
-      const stockInsights = POPULAR_STOCKS.slice(0, 4).map(stock => {
-        const data = generateCurrentStockPrice(stock.symbol);
-        const sentiment = Math.random() > 0.5 ? 'bullish' : 'bearish';
-        const confidence = 60 + Math.random() * 35; // 60-95%
+    try {
+      const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN'];
+      const stockData = await fetchMarketOverview(symbols);
+      const validStocks = stockData.filter(stock => stock !== null);
+      
+      if (validStocks.length === 0) {
+        setError('Unable to fetch real stock data. Please check API connectivity.');
+        setLoading(false);
+        toast({
+          title: "Data Unavailable",
+          description: "Unable to fetch real-time stock data. Please try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const stockInsights = validStocks.map(stock => {
+        const sentiment = stock.changePercent > 0 ? 'bullish' : 'bearish';
+        const confidence = Math.min(95, Math.max(60, 75 + Math.abs(stock.changePercent) * 2));
         
         return {
           symbol: stock.symbol,
-          name: stock.name,
+          name: getStockName(stock.symbol),
           sentiment,
           confidence: confidence.toFixed(0),
-          price: data.price,
-          change: data.changePercent,
-          analysis: generateAnalysisText(stock.symbol, sentiment, confidence),
+          price: stock.price,
+          change: stock.changePercent,
+          analysis: generateAnalysisText(stock.symbol, sentiment, confidence, stock),
           recommendation: generateRecommendation(sentiment, confidence),
-          riskLevel: confidence > 80 ? 'Low' : confidence > 60 ? 'Medium' : 'High',
+          riskLevel: confidence > 80 ? 'Low' : confidence > 65 ? 'Medium' : 'High',
         };
       });
       
       setInsights(stockInsights);
+      
+      // Calculate market sentiment from real data
+      const avgChange = validStocks.reduce((sum, s) => sum + s.changePercent, 0) / validStocks.length;
+      const volatility = Math.abs(avgChange);
+      
       setMarketSentiment({
-        overall: Math.random() > 0.6 ? 'bullish' : 'bearish',
-        fearGreedIndex: Math.floor(20 + Math.random() * 60), // 20-80
-        volatility: ['Low', 'Medium', 'High'][Math.floor(Math.random() * 3)],
+        overall: avgChange > 0 ? 'bullish' : 'bearish',
+        fearGreedIndex: Math.round(50 + (avgChange * 10)), // Convert to 0-100 scale
+        volatility: volatility > 3 ? 'High' : volatility > 1 ? 'Medium' : 'Low',
       });
+      
+    } catch (err) {
+      console.error('Failed to generate insights:', err);
+      setError('Failed to load market insights. Please try again.');
+      toast({
+        title: "Error",
+        description: "Failed to load market insights. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setLoading(false);
-    }, 2000);
+    }
   };
 
   useEffect(() => {
     generateInsights();
-  }, []);
+  }, [fetchMarketOverview]);
 
-  const generateAnalysisText = (symbol: string, sentiment: string, confidence: number) => {
+  const getStockName = (symbol: string) => {
+    const names: { [key: string]: string } = {
+      'AAPL': 'Apple Inc.',
+      'GOOGL': 'Alphabet Inc.',
+      'MSFT': 'Microsoft Corporation',
+      'AMZN': 'Amazon.com Inc.',
+      'TSLA': 'Tesla Inc.',
+      'META': 'Meta Platforms Inc.',
+    };
+    return names[symbol] || symbol;
+  };
+
+  const generateAnalysisText = (symbol: string, sentiment: string, confidence: number, stockData: any) => {
+    const priceAction = stockData.changePercent > 0 ? 'gaining' : 'declining';
+    const volumeText = stockData.volume > 10000000 ? 'high volume' : 'moderate volume';
+    
     const analyses = {
       bullish: [
-        `Strong technical indicators suggest ${symbol} is positioned for growth. Recent earnings beat expectations and institutional buying has increased.`,
-        `${symbol} shows strong momentum with rising volume and positive price action. Market sentiment remains optimistic.`,
-        `Technical analysis reveals ${symbol} breaking through key resistance levels. Fundamental analysis supports continued growth.`,
+        `${symbol} is currently ${priceAction} ${Math.abs(stockData.changePercent).toFixed(2)}% with ${volumeText}. Technical indicators suggest continued upward momentum with strong market support.`,
+        `Real-time data shows ${symbol} trading at $${stockData.price.toFixed(2)} with positive sentiment. Current price action indicates potential for further gains.`,
+        `${symbol} demonstrates strong fundamentals with current price of $${stockData.price.toFixed(2)}. Market data suggests this uptrend may continue.`,
       ],
       bearish: [
-        `${symbol} faces headwinds with declining volume and weak technical indicators. Consider caution in the near term.`,
-        `Market sentiment for ${symbol} has turned negative with concerns about valuation and competitive pressures.`,
-        `${symbol} shows signs of weakness with lower highs and declining support levels. Risk management is advised.`,
+        `${symbol} is ${priceAction} ${Math.abs(stockData.changePercent).toFixed(2)}% on ${volumeText}. Technical analysis suggests caution as downward pressure persists.`,
+        `Current market data shows ${symbol} at $${stockData.price.toFixed(2)} facing headwinds. Risk management strategies should be considered.`,
+        `${symbol} displays weakness with recent price action. At $${stockData.price.toFixed(2)}, the stock may face further challenges in the near term.`,
       ]
     };
     

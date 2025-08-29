@@ -52,9 +52,13 @@ export const useStockPrediction = () => {
         confidence: predictionData.confidence,
         predictionDate: predictionData.prediction_date,
       };
-    } catch (err) {
+    } catch (err: any) {
       console.error('Prediction error:', err);
-      setError('Failed to generate prediction');
+      if (err.message?.includes('not found')) {
+        setError(`Stock ${symbol} not found. Please check the symbol and try again.`);
+      } else {
+        setError('Failed to generate prediction. Please try again later.');
+      }
       return null;
     } finally {
       setLoading(false);
@@ -114,9 +118,12 @@ async function callGeminiForPrediction(symbol: string, currentPrice: number, his
     }
 
     return response.data;
-  } catch (error) {
-    console.error('Gemini API call failed, using fallback algorithm:', error);
-    return calculateAdvancedPrediction(currentPrice, historicalData);
+  } catch (error: any) {
+    console.error('Gemini API call failed:', error);
+    if (error.message?.includes('not found')) {
+      throw new Error(`Stock ${symbol} not found`);
+    }
+    throw new Error('AI prediction service unavailable');
   }
 }
 

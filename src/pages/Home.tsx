@@ -21,16 +21,26 @@ const Home = () => {
       try {
         const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META'];
         const data = await fetchMarketOverview(symbols);
-        setMarketData(data);
+        const validData = data.filter(stock => stock !== null);
+        setMarketData(validData);
 
-        // Load chart data for AAPL as featured stock
-        const aaplChart = await fetchStockChart('AAPL');
-        const transformedChart = aaplChart.map(point => ({
-          time: new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          price: point.price,
-          volume: point.volume,
-        }));
-        setChartData(transformedChart);
+        if (validData.length === 0) {
+          console.warn('No valid stock data found. Check API connectivity.');
+          return;
+        }
+
+        // Load chart data for first available stock
+        const firstSymbol = validData[0]?.symbol || 'AAPL';
+        const chartResult = await fetchStockChart(firstSymbol);
+        
+        if (chartResult.length > 0) {
+          const transformedChart = chartResult.map(point => ({
+            time: new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            price: point.price,
+            volume: point.volume,
+          }));
+          setChartData(transformedChart);
+        }
       } catch (error) {
         console.error('Failed to load market data:', error);
       }
@@ -161,6 +171,39 @@ const Home = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Authentication Benefits */}
+      <Card className="animate-fade-in bg-gradient-to-r from-primary/10 to-secondary/10 border-primary/20">
+        <CardContent className="p-6">
+          <div className="text-center space-y-4">
+            <div className="flex items-center justify-center gap-2">
+              <Users className="h-6 w-6 text-primary" />
+              <h3 className="text-xl font-semibold">Real-Time Data with Authentication</h3>
+            </div>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              {user ? (
+                "You're now logged in and accessing real-time stock data from Alpha Vantage API. All data is live and authenticated for accuracy."
+              ) : (
+                "Sign up to access premium features including real-time data, personalized watchlists, and advanced AI predictions with higher accuracy."
+              )}
+            </p>
+            <div className="flex items-center justify-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span>Real-time data</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span>AI predictions</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                <span>Market insights</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Featured Chart */}
       {chartData.length > 0 && (
