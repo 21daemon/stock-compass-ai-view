@@ -63,9 +63,10 @@ serve(async (req) => {
 
 async function getMarketData(symbol: string): Promise<MarketData> {
   try {
-    // Use Alpha Vantage API for real market data
+    // Use Financial Modeling Prep API with environment variable
+    const apiKey = Deno.env.get('FINANCIAL_MODELING_PREP_API_KEY') || 'demo';
     const response = await fetch(
-      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=demo`
+      `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${apiKey}`
     );
     
     if (!response.ok) {
@@ -73,24 +74,20 @@ async function getMarketData(symbol: string): Promise<MarketData> {
     }
     
     const data = await response.json();
-    const quote = data['Global Quote'];
+    const quote = data[0];
     
-    if (!quote || Object.keys(quote).length === 0) {
+    if (!quote || data.error || data['Error Message']) {
       throw new Error(`Stock ${symbol} not found`);
     }
     
-    const price = parseFloat(quote['05. price']);
-    const change = parseFloat(quote['09. change']);
-    const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
-    
     return {
-      symbol: quote['01. symbol'],
-      price: price,
-      volume: parseInt(quote['06. volume']),
-      marketCap: Math.round(price * parseInt(quote['06. volume']) / 1000000),
-      peRatio: 0, // Not available in Alpha Vantage basic
-      change: change,
-      changePercent: changePercent,
+      symbol: quote.symbol,
+      price: quote.price,
+      volume: quote.volume,
+      marketCap: quote.marketCap || Math.round(quote.price * quote.volume / 1000000),
+      peRatio: quote.pe || 0,
+      change: quote.change,
+      changePercent: quote.changesPercentage,
     };
   } catch (error) {
     console.error('Market data fetch error:', error);
@@ -100,9 +97,10 @@ async function getMarketData(symbol: string): Promise<MarketData> {
 
 async function getTechnicalIndicators(symbol: string) {
   try {
-    // Get historical data for technical analysis
+    // Get technical indicators from Financial Modeling Prep
+    const apiKey = Deno.env.get('FINANCIAL_MODELING_PREP_API_KEY') || 'demo';
     const response = await fetch(
-      `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=demo&outputsize=compact`
+      `https://financialmodelingprep.com/api/v3/technical_indicator/daily/${symbol}?period=14&type=rsi&apikey=${apiKey}`
     );
     
     if (!response.ok) {
@@ -110,22 +108,16 @@ async function getTechnicalIndicators(symbol: string) {
     }
     
     const data = await response.json();
-    const timeSeries = data['Time Series (Daily)'];
     
-    if (!timeSeries || Object.keys(timeSeries).length === 0) {
+    if (!data || data.length === 0 || data.error || data['Error Message']) {
       throw new Error(`Technical data for ${symbol} not found`);
     }
     
-    // Calculate basic indicators from price data
-    const prices = Object.values(timeSeries).slice(0, 14).map((day: any) => parseFloat(day['4. close']));
-    const avgPrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-    const currentPrice = prices[0];
-    
     return {
-      rsi: currentPrice > avgPrice ? 65 : 35,
-      trend: currentPrice > avgPrice ? 'bullish' : 'bearish',
-      support: Math.min(...prices) * 0.98,
-      resistance: Math.max(...prices) * 1.02,
+      rsi: data[0]?.rsi || 50,
+      trend: data.length > 5 ? 'bullish' : 'bearish',
+      support: data[0]?.low || 0,
+      resistance: data[0]?.high || 0,
     };
   } catch (error) {
     console.error('Technical indicators fetch error:', error);

@@ -117,11 +117,11 @@ const Home = () => {
               <Activity className="h-8 w-8 text-blue-500" />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Change</p>
-                <p className="text-2xl font-bold">
+                <div className="text-2xl font-bold">
                   <Badge variant={marketStats.avgChange >= 0 ? "default" : "destructive"}>
                     {marketStats.avgChange >= 0 ? '+' : ''}{marketStats.avgChange.toFixed(2)}%
                   </Badge>
-                </p>
+                </div>
               </div>
             </div>
           </CardContent>
