@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import StockChart from '@/components/StockChart';
 import { X, Plus, TrendingUp, TrendingDown, GitCompare } from 'lucide-react';
-import { generateCurrentStockPrice, generateStockData, generatePrediction } from '@/utils/stockUtils';
+import { useStockData } from '@/hooks/useStockData';
 import { toast } from 'sonner';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -15,6 +15,7 @@ const Compare = () => {
   const [newSymbol, setNewSymbol] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
+  const { fetchStockPrice, fetchStockChart } = useStockData();
 
   const colors = ['hsl(var(--primary))', 'hsl(var(--destructive))', '#10b981', '#f59e0b', '#8b5cf6'];
 
@@ -37,16 +38,23 @@ const Compare = () => {
     setIsLoading(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const stockData = await fetchStockPrice(newSymbol.toUpperCase());
+      const historical = await fetchStockChart(newSymbol.toUpperCase());
       
-      const stock = generateCurrentStockPrice(newSymbol.toUpperCase());
-      const historical = generateStockData(newSymbol.toUpperCase(), 30);
-      const predictions = generatePrediction(historical, 5);
+      if (!stockData) {
+        toast.error(`Stock ${newSymbol.toUpperCase()} not found`);
+        return;
+      }
+      
+      const transformedHistorical = historical.map(point => ({
+        time: new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        price: point.price,
+        volume: point.volume,
+      }));
       
       const stockWithData = {
-        ...stock,
-        historical,
-        predictions,
+        ...stockData,
+        historical: transformedHistorical,
         color: colors[stocks.length],
       };
       
@@ -120,7 +128,7 @@ const Compare = () => {
       const defaultSymbols = ['AAPL', 'GOOGL'];
       for (const symbol of defaultSymbols) {
         setNewSymbol(symbol);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 500));
         await addStock();
       }
     };
@@ -128,7 +136,7 @@ const Compare = () => {
     if (stocks.length === 0) {
       loadDefaults();
     }
-  }, []);
+  }, [fetchStockPrice, fetchStockChart]);
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
