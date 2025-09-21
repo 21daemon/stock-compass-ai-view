@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/use-toast';
 const Insights = () => {
   const [insights, setInsights] = useState<any[]>([]);
   const [marketSentiment, setMarketSentiment] = useState<any>(null);
+  const [keyInsights, setKeyInsights] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { fetchMarketOverview } = useStockData();
@@ -63,6 +64,10 @@ const Insights = () => {
         fearGreedIndex: Math.round(50 + (avgChange * 10)), // Convert to 0-100 scale
         volatility: volatility > 3 ? 'High' : volatility > 1 ? 'Medium' : 'Low',
       });
+
+      // Generate dynamic key insights based on real market data
+      const dynamicInsights = generateKeyInsights(validStocks, avgChange, volatility);
+      setKeyInsights(dynamicInsights);
       
     } catch (err) {
       console.error('Failed to generate insights:', err);
@@ -131,6 +136,90 @@ const Insights = () => {
     if (level === 'Low') return <CheckCircle className="h-4 w-4 text-green-600" />;
     if (level === 'Medium') return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
     return <AlertTriangle className="h-4 w-4 text-red-600" />;
+  };
+
+  const generateKeyInsights = (stocks: any[], avgChange: number, volatility: number) => {
+    const insights = [];
+    
+    // Market direction insight
+    if (avgChange > 2) {
+      insights.push({
+        type: 'opportunity',
+        title: 'Strong Market Momentum',
+        description: `Market showing strong bullish momentum with ${avgChange.toFixed(2)}% average gains. Tech leaders like ${stocks.find(s => s.symbol === 'AAPL' || s.symbol === 'MSFT')?.symbol || stocks[0]?.symbol} driving the rally.`,
+        icon: CheckCircle,
+        color: 'green'
+      });
+    } else if (avgChange < -2) {
+      insights.push({
+        type: 'watch',
+        title: 'Market Correction',
+        description: `Market experiencing ${Math.abs(avgChange).toFixed(2)}% decline. Consider defensive positions and value opportunities emerging.`,
+        icon: AlertTriangle,
+        color: 'red'
+      });
+    } else {
+      insights.push({
+        type: 'opportunity',
+        title: 'Stable Market Conditions',
+        description: `Market showing consolidation with low volatility. Good environment for selective stock picking and building positions.`,
+        icon: CheckCircle,
+        color: 'green'
+      });
+    }
+
+    // Volatility insight
+    if (volatility > 3) {
+      insights.push({
+        type: 'watch',
+        title: 'High Volatility Alert',
+        description: `Market volatility at ${volatility.toFixed(1)}%. Expect significant price swings. Use tight risk management and consider volatility hedging strategies.`,
+        icon: AlertTriangle,
+        color: 'yellow'
+      });
+    } else if (volatility < 1) {
+      insights.push({
+        type: 'opportunity',
+        title: 'Low Volatility Window',
+        description: `Current volatility at ${volatility.toFixed(1)}% provides stable trading environment. Good time for leveraged strategies and momentum plays.`,
+        icon: CheckCircle,
+        color: 'green'
+      });
+    } else {
+      insights.push({
+        type: 'watch',
+        title: 'Moderate Market Activity',
+        description: `Balanced volatility at ${volatility.toFixed(1)}%. Monitor key support/resistance levels for breakout opportunities.`,
+        icon: AlertTriangle,
+        color: 'yellow'
+      });
+    }
+
+    // Individual stock insights
+    const topPerformer = stocks.reduce((max, stock) => stock.changePercent > max.changePercent ? stock : max, stocks[0]);
+    const worstPerformer = stocks.reduce((min, stock) => stock.changePercent < min.changePercent ? stock : min, stocks[0]);
+
+    if (topPerformer.changePercent > 2) {
+      insights.push({
+        type: 'opportunity',
+        title: `${topPerformer.symbol} Leading Gains`,
+        description: `${topPerformer.symbol} up ${topPerformer.changePercent.toFixed(2)}% at $${topPerformer.price.toFixed(2)}. Strong momentum may continue with proper risk management.`,
+        icon: TrendingUp,
+        color: 'green'
+      });
+    }
+
+    if (worstPerformer.changePercent < -2) {
+      insights.push({
+        type: 'watch',
+        title: `${worstPerformer.symbol} Under Pressure`,
+        description: `${worstPerformer.symbol} down ${Math.abs(worstPerformer.changePercent).toFixed(2)}% at $${worstPerformer.price.toFixed(2)}. Monitor for potential reversal or further decline.`,
+        icon: TrendingDown,
+        color: 'red'
+      });
+    }
+
+    return insights.slice(0, 4); // Limit to 4 insights max
   };
 
   return (
@@ -259,30 +348,55 @@ const Insights = () => {
       {/* Key Market Insights */}
       <Card className="animate-fade-in">
         <CardHeader>
-          <CardTitle>Key Market Insights</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            Real-Time Market Insights
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-800 dark:text-green-400">Opportunity</span>
-              </div>
-              <p className="text-sm text-green-700 dark:text-green-300">
-                Technology sector showing strong fundamentals with AI-driven companies leading growth. Consider diversified tech exposure.
-              </p>
+          {keyInsights.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {keyInsights.map((insight, index) => (
+                <div 
+                  key={index}
+                  className={`p-4 rounded-lg border animate-fade-in ${
+                    insight.color === 'green' 
+                      ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
+                      : insight.color === 'yellow'
+                      ? 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800'
+                      : 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800'
+                  }`}
+                  style={{ animationDelay: `${index * 100}ms` } as any}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <insight.icon className={`h-5 w-5 ${
+                      insight.color === 'green' ? 'text-green-600' :
+                      insight.color === 'yellow' ? 'text-yellow-600' : 'text-red-600'
+                    }`} />
+                    <span className={`font-medium ${
+                      insight.color === 'green' ? 'text-green-800 dark:text-green-400' :
+                      insight.color === 'yellow' ? 'text-yellow-800 dark:text-yellow-400' :
+                      'text-red-800 dark:text-red-400'
+                    }`}>
+                      {insight.title}
+                    </span>
+                  </div>
+                  <p className={`text-sm ${
+                    insight.color === 'green' ? 'text-green-700 dark:text-green-300' :
+                    insight.color === 'yellow' ? 'text-yellow-700 dark:text-yellow-300' :
+                    'text-red-700 dark:text-red-300'
+                  }`}>
+                    {insight.description}
+                  </p>
+                </div>
+              ))}
             </div>
-            
-            <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                <span className="font-medium text-yellow-800 dark:text-yellow-400">Watch</span>
-              </div>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                Market volatility expected due to upcoming earnings season. Monitor for sudden price movements and adjust positions accordingly.
-              </p>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Generate insights to see real-time market analysis</p>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
